@@ -10,6 +10,7 @@ import { useWorkspace } from "./workspace";
 
 const NAV = [
   { href: "/", label: "Your work" },
+  { href: "/spaces", label: "Spaces" },
   { href: "/issues", label: "Issues" },
   { href: "/timesheet", label: "Timesheet" },
   { href: "/reports", label: "Reports" },

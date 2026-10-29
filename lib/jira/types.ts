@@ -17,7 +17,14 @@ export type JiraUser = {
   accountType?: string;
 };
 
-export type IssueType = { id: string; name: string; iconUrl?: string; subtask?: boolean };
+export type IssueType = {
+  id: string;
+  name: string;
+  iconUrl?: string;
+  subtask?: boolean;
+  hierarchyLevel?: number;
+  scope?: { type: string; project?: { id: string } };
+};
 
 export type Status = {
   id: string;
@@ -32,6 +39,12 @@ export type Project = {
   key: string;
   name: string;
   avatarUrls?: Record<string, string>;
+  projectTypeKey?: string;
+  style?: string;
+  lead?: JiraUser;
+  description?: string;
+  issueTypes?: IssueType[];
+  projectCategory?: { name: string };
 };
 
 export type TimeTracking = {

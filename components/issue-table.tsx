@@ -14,12 +14,13 @@ export function IssueTable({ issues }: { issues: Issue[] }) {
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[900px] text-sm">
+      <table className="w-full min-w-[1000px] text-sm">
         <thead>
           <tr className="border-b-2 border-line text-left text-xs font-semibold text-subtle">
             <th className="w-8 py-2 pl-2">T</th>
             <th className="w-28 py-2">Key</th>
             <th className="py-2">Summary</th>
+            <th className="w-28 py-2">Parent</th>
             <th className="w-36 py-2">Status</th>
             <th className="w-40 py-2">Assignee</th>
             <th className="w-24 py-2 text-right">Estimate</th>
@@ -46,6 +47,21 @@ export function IssueTable({ issues }: { issues: Issue[] }) {
                   <button type="button" className="block w-full truncate text-left hover:underline" onClick={() => openIssue(issue.key)}>
                     {f.summary}
                   </button>
+                </td>
+                <td className="py-2">
+                  {f.parent ? (
+                    <button
+                      type="button"
+                      className="flex items-center gap-1 text-xs text-subtle hover:underline"
+                      title={f.parent.fields?.summary}
+                      onClick={() => openIssue(f.parent!.key)}
+                    >
+                      <IssueTypeIcon type={f.parent.fields?.issuetype} />
+                      {f.parent.key}
+                    </button>
+                  ) : (
+                    <span className="text-faint">—</span>
+                  )}
                 </td>
                 <td className="py-2">
                   <StatusLozenge status={f.status} />

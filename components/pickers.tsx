@@ -5,7 +5,7 @@ import { pickIssues, searchUsers } from "@/lib/jira/api";
 import type { JiraUser, PickerIssue } from "@/lib/jira/types";
 import { Avatar, JiraIcon, Spinner, inputClass } from "./ui";
 
-function useDebounced<T>(value: T, ms = 250): T {
+export function useDebounced<T>(value: T, ms = 250): T {
   const [v, setV] = useState(value);
   useEffect(() => {
     const t = setTimeout(() => setV(value), ms);
@@ -182,6 +182,80 @@ export function UserPicker({
               {user.emailAddress && <span className="truncate text-xs text-faint">{user.emailAddress}</span>}
             </button>
           ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export type Option = { value: string; label: string; icon?: string; hint?: string };
+
+/** Jira-style filter button ("Project ▾") with a searchable checkbox list. */
+export function MultiSelect({
+  label,
+  options,
+  value,
+  onChange,
+  loading,
+}: {
+  label: string;
+  options: Option[];
+  value: string[];
+  onChange: (value: string[]) => void;
+  loading?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const ref = useClickOutside(() => setOpen(false));
+  const q = query.trim().toLowerCase();
+  const visible = options.filter((o) => !q || o.label.toLowerCase().includes(q) || o.hint?.toLowerCase().includes(q));
+  const selectedLabels = options.filter((o) => value.includes(o.value)).map((o) => o.label);
+
+  const toggle = (v: string) => onChange(value.includes(v) ? value.filter((x) => x !== v) : [...value, v]);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className={`inline-flex h-8 max-w-[260px] items-center gap-1 rounded-[3px] px-3 text-sm font-medium ${
+          value.length ? "bg-brand-subtle text-brand ring-1 ring-brand" : "bg-[#091e420f] text-ink hover:bg-[#091e4224]"
+        }`}
+      >
+        <span className="truncate">
+          {label}
+          {value.length > 0 && `: ${selectedLabels.length <= 2 ? selectedLabels.join(", ") : `${selectedLabels.length} selected`}`}
+        </span>
+        <span className="text-xs">▾</span>
+      </button>
+      {open && (
+        <div className="absolute z-30 mt-1 w-72 rounded-[3px] bg-white shadow-lg ring-1 ring-line">
+          <div className="p-2">
+            <input className={`${inputClass} h-8`} placeholder={`Search ${label.toLowerCase()}`} value={query} onChange={(e) => setQuery(e.target.value)} autoFocus />
+          </div>
+          <div className="max-h-72 overflow-y-auto pb-1">
+            {loading && !options.length && (
+              <div className="flex items-center gap-2 px-3 py-2 text-sm text-subtle">
+                <Spinner /> Loading…
+              </div>
+            )}
+            {!loading && !visible.length && <div className="px-3 py-2 text-sm text-subtle">No matches</div>}
+            {visible.map((o) => (
+              <label key={o.value} className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm hover:bg-hover">
+                <input type="checkbox" className="accent-brand" checked={value.includes(o.value)} onChange={() => toggle(o.value)} />
+                {o.icon && <JiraIcon src={o.icon} alt="" />}
+                <span className="truncate">{o.label}</span>
+                {o.hint && <span className="ml-auto shrink-0 text-xs text-faint">{o.hint}</span>}
+              </label>
+            ))}
+          </div>
+          {value.length > 0 && (
+            <div className="border-t border-line px-3 py-2">
+              <button type="button" className="text-xs font-medium text-brand hover:underline" onClick={() => onChange([])}>
+                Clear selection
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>

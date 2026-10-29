@@ -3,8 +3,10 @@ import type {
   AdfNode,
   AdjustEstimate,
   Issue,
+  IssueType,
   JiraUser,
   PickerIssue,
+  Project,
   SearchResponse,
   Transition,
   Worklog,
@@ -58,6 +60,7 @@ export const ISSUE_LIST_FIELDS = [
   "timeoriginalestimate",
   "timeestimate",
   "updated",
+  "parent",
 ];
 
 export const getMyself = () => jira<JiraUser>("myself");
@@ -109,6 +112,25 @@ export async function pickIssues(query: string): Promise<PickerIssue[]> {
     .flatMap((s) => s.issues)
     .filter((i) => (seen.has(i.key) ? false : (seen.add(i.key), true)));
 }
+
+/** Approximate number of issues matching a JQL query (the /search/jql endpoint returns no total). */
+export const countIssues = (jql: string) =>
+  jira<{ count: number }>("search/approximate-count", { method: "POST", body: { jql } }).then((r) => r.count);
+
+/** Every project ("space") the user can browse. */
+export async function getAllProjects(): Promise<Project[]> {
+  const all: Project[] = [];
+  for (let startAt = 0; ; ) {
+    const page = await jira<{ values: Project[]; isLast: boolean; total: number }>("project/search", {
+      query: { startAt, maxResults: 100, orderBy: "name", expand: "lead,description,issueTypes" },
+    });
+    all.push(...page.values);
+    startAt += page.values.length;
+    if (page.isLast || !page.values.length) return all;
+  }
+}
+
+export const getIssueTypes = () => jira<IssueType[]>("issuetype");
 
 export const searchUsers = (query: string) =>
   jira<JiraUser[]>("user/search", { query: { query, maxResults: 20 } }).then((users) =>

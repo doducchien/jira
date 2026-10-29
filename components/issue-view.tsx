@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { AdfView } from "@/lib/jira/adf";
-import { doTransition, getIssue, getTransitions, getWorklogs } from "@/lib/jira/api";
+import { ISSUE_LIST_FIELDS, doTransition, getIssue, getTransitions, getWorklogs, searchAllIssues } from "@/lib/jira/api";
 import type { Issue, Transition } from "@/lib/jira/types";
 import { formatDate, formatDateTime, formatDuration, parseJiraDate } from "@/lib/time";
 import { useAsync } from "@/lib/use-async";
@@ -91,6 +91,8 @@ function IssueBody({ issue, onClose }: { issue: Issue; onClose: () => void }) {
 
           <h3 className="mt-6 mb-2 text-sm font-semibold">Description</h3>
           {f.description ? <AdfView node={f.description} /> : <p className="text-sm text-faint">No description</p>}
+
+          <ChildIssues issueKey={issue.key} />
 
           <h3 className="mt-8 mb-2 text-sm font-semibold">Activity</h3>
           <div className="flex items-center gap-1 border-b border-line">
@@ -202,6 +204,60 @@ function IssueBody({ issue, onClose }: { issue: Issue; onClose: () => void }) {
         </aside>
       </div>
     </>
+  );
+}
+
+/** Children of an epic / story / task (Jira's "Child issues" panel), with their combined logged time. */
+function ChildIssues({ issueKey }: { issueKey: string }) {
+  const { timeConfig } = useSession();
+  const { version, openIssue, logWork } = useWorkspace();
+  const children = useAsync(
+    () => searchAllIssues(`parent = "${issueKey}" ORDER BY created ASC`, ISSUE_LIST_FIELDS, 500),
+    [issueKey, version],
+  );
+  const list = children.data ?? [];
+  if (!list.length) return children.error ? <ErrorBanner error={children.error} /> : null;
+
+  const done = list.filter((c) => c.fields.status?.statusCategory?.key === "done").length;
+  const spent = list.reduce((a, c) => a + (c.fields.timespent ?? 0), 0);
+  const remaining = list.reduce((a, c) => a + (c.fields.timeestimate ?? 0), 0);
+
+  return (
+    <section className="mt-8">
+      <div className="mb-2 flex items-baseline gap-3">
+        <h3 className="text-sm font-semibold">Child issues</h3>
+        <span className="text-xs text-subtle">
+          {done} of {list.length} done · {formatDuration(spent, timeConfig)} logged
+        </span>
+      </div>
+      <div className="mb-2 h-1.5 overflow-hidden rounded-full bg-line">
+        <div className="h-full bg-success" style={{ width: `${(done / list.length) * 100}%` }} />
+      </div>
+      <ul className="divide-y divide-line rounded-[3px] border border-line">
+        {list.map((c) => (
+          <li key={c.id} className="group flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-surface">
+            <IssueTypeIcon type={c.fields.issuetype} />
+            <button type="button" className="shrink-0 font-medium text-brand hover:underline" onClick={() => openIssue(c.key)}>
+              {c.key}
+            </button>
+            <span className="truncate">{c.fields.summary}</span>
+            <span className="ml-auto flex shrink-0 items-center gap-3">
+              <span className="text-xs tabular-nums text-subtle">{c.fields.timespent ? formatDuration(c.fields.timespent, timeConfig) : ""}</span>
+              <button
+                type="button"
+                className="hidden text-xs font-medium text-brand hover:underline group-hover:inline"
+                onClick={() => logWork({ issueKey: c.key })}
+              >
+                Log
+              </button>
+              <Avatar user={c.fields.assignee} size={20} />
+              <StatusLozenge status={c.fields.status} />
+            </span>
+          </li>
+        ))}
+      </ul>
+      {remaining > 0 && <p className="mt-1 text-xs text-faint">{formatDuration(remaining, timeConfig)} remaining across children</p>}
+    </section>
   );
 }
 

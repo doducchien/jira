@@ -2,11 +2,12 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { AdfView } from "@/lib/jira/adf";
-import { ISSUE_LIST_FIELDS, doTransition, getIssue, getTransitions, getWorklogs, searchAllIssues } from "@/lib/jira/api";
+import { ISSUE_LIST_FIELDS, assignIssue, doTransition, getIssue, getTransitions, getWorklogs, searchAllIssues, searchIssueAssignees } from "@/lib/jira/api";
 import type { Issue, Transition } from "@/lib/jira/types";
 import { formatDate, formatDateTime, formatDuration, parseJiraDate } from "@/lib/time";
 import { useAsync } from "@/lib/use-async";
 import { InlineCreateChild, canHaveChildren, isEpic } from "./create-child";
+import { UserPicker } from "./pickers";
 import { useSession } from "./session";
 import { TimeTrackingBar } from "./time-tracking";
 import { Avatar, Button, ErrorBanner, IssueTypeIcon, JiraIcon, Spinner, StatusLozenge } from "./ui";
@@ -160,10 +161,7 @@ function IssueBody({ issue, onClose }: { issue: Issue; onClose: () => void }) {
             <div className="border-b border-line px-4 py-2.5 text-sm font-semibold">Details</div>
             <dl className="space-y-3 px-4 py-3 text-sm">
               <Detail label="Assignee">
-                <span className="flex items-center gap-2">
-                  <Avatar user={f.assignee} />
-                  {f.assignee?.displayName ?? "Unassigned"}
-                </span>
+                <AssigneeField issue={issue} />
               </Detail>
               <Detail label="Reporter">
                 <span className="flex items-center gap-2">
@@ -299,6 +297,81 @@ function ChildIssues({
       </ul>
       {remaining > 0 && <p className="mt-1 text-xs text-faint">{formatDuration(remaining, timeConfig)} remaining across children</p>}
     </section>
+  );
+}
+
+/** Click-to-edit assignee, with Jira's "Assign to me" shortcut. */
+function AssigneeField({ issue }: { issue: Issue }) {
+  const { myself } = useSession();
+  const { changed } = useWorkspace();
+  const [editing, setEditing] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<unknown>(null);
+  const assignee = issue.fields.assignee;
+
+  async function assign(accountId: string | null) {
+    setEditing(false);
+    setBusy(true);
+    setError(null);
+    try {
+      await assignIssue(issue.key, accountId);
+      changed();
+    } catch (err) {
+      setError(err);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="space-y-1">
+      {editing ? (
+        <div
+          onKeyDown={(e) => {
+            if (e.key === "Escape") {
+              e.preventDefault();
+              setEditing(false);
+            }
+          }}
+        >
+          <UserPicker
+            autoFocus
+            placeholder="Search people"
+            exclude={assignee ? [assignee.accountId] : []}
+            search={(q) => searchIssueAssignees(issue.key, q)}
+            onSelect={(u) => assign(u.accountId)}
+          />
+          <div className="mt-1 flex gap-3 text-xs font-medium">
+            {assignee && (
+              <button type="button" className="text-brand hover:underline" onClick={() => assign(null)}>
+                Unassign
+              </button>
+            )}
+            <button type="button" className="text-subtle hover:underline" onClick={() => setEditing(false)}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => setEditing(true)}
+          className="-mx-1 flex w-full items-center gap-2 rounded px-1 py-0.5 text-left hover:bg-hover"
+          title="Change assignee"
+        >
+          <Avatar user={assignee} />
+          <span className="truncate">{assignee?.displayName ?? "Unassigned"}</span>
+          {busy && <Spinner className="ml-auto" />}
+        </button>
+      )}
+      {!editing && assignee?.accountId !== myself.accountId && (
+        <button type="button" disabled={busy} className="text-xs font-medium text-brand hover:underline" onClick={() => assign(myself.accountId)}>
+          Assign to me
+        </button>
+      )}
+      <ErrorBanner error={error} />
+    </div>
   );
 }
 

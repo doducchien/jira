@@ -158,6 +158,14 @@ export const createIssue = (fields: Record<string, unknown>) =>
 export const searchAssignableUsers = (projectKey: string, query: string) =>
   jira<JiraUser[]>("user/assignable/search", { query: { project: projectKey, query, maxResults: 20 } });
 
+/** People who can be assigned this particular issue (respects its workflow / permissions). */
+export const searchIssueAssignees = (issueKey: string, query: string) =>
+  jira<JiraUser[]>("user/assignable/search", { query: { issueKey, query, maxResults: 20 } });
+
+/** `null` unassigns the issue. */
+export const assignIssue = (issueKey: string, accountId: string | null) =>
+  jira<void>(`issue/${encodeURIComponent(issueKey)}/assignee`, { method: "PUT", body: { accountId } });
+
 export const searchUsers = (query: string) =>
   jira<JiraUser[]>("user/search", { query: { query, maxResults: 20 } }).then((users) =>
     users.filter((u) => u.accountType !== "app"),

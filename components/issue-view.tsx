@@ -1,0 +1,271 @@
+"use client";
+
+import { useEffect, useState, type ReactNode } from "react";
+import { AdfView } from "@/lib/jira/adf";
+import { doTransition, getIssue, getTransitions, getWorklogs } from "@/lib/jira/api";
+import type { Issue, Transition } from "@/lib/jira/types";
+import { formatDate, formatDateTime, formatDuration, parseJiraDate } from "@/lib/time";
+import { useAsync } from "@/lib/use-async";
+import { useSession } from "./session";
+import { TimeTrackingBar } from "./time-tracking";
+import { Avatar, Button, ErrorBanner, IssueTypeIcon, JiraIcon, Spinner, StatusLozenge } from "./ui";
+import { WorklogList } from "./worklog-list";
+import { useWorkspace } from "./workspace";
+
+/** Full issue view (Jira's issue modal), centred on the work log. */
+export function IssueView({ issueKey, onClose }: { issueKey: string; onClose: () => void }) {
+  const { version } = useWorkspace();
+  const issue = useAsync(() => getIssue(issueKey), [issueKey, version]);
+
+  useEffect(() => {
+    // Dialogs opened on top of the issue handle their own Escape.
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && !document.querySelector("[data-modal]") && onClose();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-40 flex items-start justify-center overflow-y-auto bg-[#091e427a] px-4 py-[4vh]"
+      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <div className="w-full max-w-6xl rounded-[3px] bg-white shadow-xl" role="dialog" aria-modal>
+        {issue.data ? (
+          <IssueBody issue={issue.data} onClose={onClose} />
+        ) : (
+          <div className="flex items-center justify-between p-6">
+            {issue.error ? <ErrorBanner error={issue.error} /> : <Spinner />}
+            <Button variant="subtle" onClick={onClose}>
+              ✕
+            </Button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function IssueBody({ issue, onClose }: { issue: Issue; onClose: () => void }) {
+  const { site, timeConfig } = useSession();
+  const { version, logWork, editEstimates, changed } = useWorkspace();
+  const [tab, setTab] = useState<"worklog" | "comments">("worklog");
+  const [newestFirst, setNewestFirst] = useState(true);
+  const worklogs = useAsync(() => getWorklogs(issue.key), [issue.key, version]);
+  const f = issue.fields;
+  const tt = f.timetracking ?? {};
+
+  const sortedWorklogs = [...(worklogs.data ?? [])].sort((a, b) => {
+    const diff = parseJiraDate(a.started).getTime() - parseJiraDate(b.started).getTime();
+    return newestFirst ? -diff : diff;
+  });
+
+  return (
+    <>
+      <div className="flex items-center gap-2 px-6 pt-4 text-sm text-subtle">
+        <JiraIcon src={f.project?.avatarUrls?.["16x16"]} alt="" />
+        <span>{f.project?.name}</span>
+        {f.parent && (
+          <>
+            <span>/</span>
+            <IssueTypeIcon type={f.parent.fields?.issuetype} />
+            <span>{f.parent.key}</span>
+          </>
+        )}
+        <span>/</span>
+        <IssueTypeIcon type={f.issuetype} />
+        <a href={`https://${site}/browse/${issue.key}`} target="_blank" rel="noreferrer" className="hover:underline">
+          {issue.key}
+        </a>
+        <Button variant="subtle" className="ml-auto" onClick={onClose} aria-label="Close">
+          ✕
+        </Button>
+      </div>
+
+      <div className="grid gap-8 px-6 pb-8 pt-2 md:grid-cols-[minmax(0,1fr)_340px]">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-medium">{f.summary}</h1>
+          <div className="mt-3 flex gap-2">
+            <Button onClick={() => logWork({ issueKey: issue.key })}>⏱ Log work</Button>
+            <Button onClick={() => editEstimates(issue)}>Edit estimates</Button>
+          </div>
+
+          <h3 className="mt-6 mb-2 text-sm font-semibold">Description</h3>
+          {f.description ? <AdfView node={f.description} /> : <p className="text-sm text-faint">No description</p>}
+
+          <h3 className="mt-8 mb-2 text-sm font-semibold">Activity</h3>
+          <div className="flex items-center gap-1 border-b border-line">
+            {(
+              [
+                ["worklog", `Work log${worklogs.data ? ` (${worklogs.data.length})` : ""}`],
+                ["comments", `Comments (${f.comment?.total ?? 0})`],
+              ] as const
+            ).map(([key, label]) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setTab(key)}
+                className={`-mb-px border-b-2 px-2 py-1.5 text-sm font-medium ${
+                  tab === key ? "border-brand text-brand" : "border-transparent text-subtle hover:text-ink"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+            {tab === "worklog" && (
+              <button type="button" className="ml-auto text-xs text-subtle hover:underline" onClick={() => setNewestFirst((v) => !v)}>
+                {newestFirst ? "Newest first ↓" : "Oldest first ↑"}
+              </button>
+            )}
+          </div>
+          {tab === "worklog" ? (
+            worklogs.error ? (
+              <ErrorBanner error={worklogs.error} />
+            ) : worklogs.data ? (
+              <WorklogList issueKey={issue.key} worklogs={sortedWorklogs} />
+            ) : (
+              <div className="py-4">
+                <Spinner />
+              </div>
+            )
+          ) : (
+            <ul className="divide-y divide-line">
+              {(f.comment?.comments ?? []).map((c) => (
+                <li key={c.id} className="flex gap-3 py-3">
+                  <Avatar user={c.author} size={32} />
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm">
+                      <span className="font-semibold">{c.author?.displayName}</span>{" "}
+                      <span className="text-xs text-faint">{formatDateTime(c.created)}</span>
+                    </div>
+                    <AdfView node={c.body} />
+                  </div>
+                </li>
+              ))}
+              {!f.comment?.comments.length && <p className="py-4 text-sm text-subtle">No comments yet.</p>}
+            </ul>
+          )}
+        </div>
+
+        <aside className="space-y-4">
+          <StatusButton issue={issue} onChanged={changed} />
+          <div className="rounded-[3px] border border-line">
+            <div className="border-b border-line px-4 py-2.5 text-sm font-semibold">Details</div>
+            <dl className="space-y-3 px-4 py-3 text-sm">
+              <Detail label="Assignee">
+                <span className="flex items-center gap-2">
+                  <Avatar user={f.assignee} />
+                  {f.assignee?.displayName ?? "Unassigned"}
+                </span>
+              </Detail>
+              <Detail label="Reporter">
+                <span className="flex items-center gap-2">
+                  <Avatar user={f.reporter} />
+                  {f.reporter?.displayName ?? "None"}
+                </span>
+              </Detail>
+              <Detail label="Priority">
+                <span className="flex items-center gap-2">
+                  {f.priority && <JiraIcon src={f.priority.iconUrl} alt="" />}
+                  {f.priority?.name ?? "None"}
+                </span>
+              </Detail>
+              <Detail label="Original estimate">
+                {tt.originalEstimateSeconds ? formatDuration(tt.originalEstimateSeconds, timeConfig) : "None"}
+              </Detail>
+              <Detail label="Time tracking">
+                <button type="button" className="block w-full rounded p-1 text-left hover:bg-hover" onClick={() => editEstimates(issue)}>
+                  <TimeTrackingBar
+                    spent={tt.timeSpentSeconds ?? 0}
+                    remaining={tt.remainingEstimateSeconds ?? 0}
+                    original={tt.originalEstimateSeconds}
+                  />
+                </button>
+              </Detail>
+              {!!f.labels?.length && (
+                <Detail label="Labels">
+                  <span className="flex flex-wrap gap-1">
+                    {f.labels.map((l) => (
+                      <span key={l} className="rounded-[3px] bg-surface px-1.5 text-xs ring-1 ring-line">
+                        {l}
+                      </span>
+                    ))}
+                  </span>
+                </Detail>
+              )}
+              {f.duedate && <Detail label="Due date">{formatDate(f.duedate)}</Detail>}
+            </dl>
+          </div>
+          <div className="space-y-0.5 text-xs text-faint">
+            {f.created && <p>Created {formatDateTime(f.created)}</p>}
+            {f.updated && <p>Updated {formatDateTime(f.updated)}</p>}
+          </div>
+        </aside>
+      </div>
+    </>
+  );
+}
+
+function Detail({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="grid grid-cols-[110px_minmax(0,1fr)] items-start gap-2">
+      <dt className="pt-0.5 font-semibold text-subtle">{label}</dt>
+      <dd className="min-w-0">{children}</dd>
+    </div>
+  );
+}
+
+function StatusButton({ issue, onChanged }: { issue: Issue; onChanged: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [transitions, setTransitions] = useState<Transition[] | null>(null);
+  const [error, setError] = useState<unknown>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function toggle() {
+    setOpen((o) => !o);
+    if (!transitions) getTransitions(issue.key).then(setTransitions, setError);
+  }
+
+  async function run(t: Transition) {
+    setBusy(true);
+    setOpen(false);
+    try {
+      await doTransition(issue.key, t.id);
+      setTransitions(null);
+      onChanged();
+    } catch (err) {
+      setError(err);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const category = issue.fields.status?.statusCategory?.colorName;
+  const color =
+    category === "green" ? "bg-[#1f845a] text-white hover:bg-[#216e4e]" : category === "yellow" ? "bg-brand text-white hover:bg-brand-hover" : "bg-[#091e420f] hover:bg-[#091e4224]";
+
+  return (
+    <div className="relative">
+      <button type="button" onClick={toggle} disabled={busy} className={`inline-flex h-8 items-center gap-1 rounded-[3px] px-3 text-sm font-medium ${color}`}>
+        {issue.fields.status?.name} ▾
+      </button>
+      {open && (
+        <div className="absolute z-30 mt-1 min-w-[200px] rounded-[3px] bg-white py-1 shadow-lg ring-1 ring-line">
+          {!transitions && !error && (
+            <div className="px-3 py-2">
+              <Spinner />
+            </div>
+          )}
+          {transitions?.map((t) => (
+            <button key={t.id} type="button" onClick={() => run(t)} className="flex w-full items-center justify-between gap-3 px-3 py-1.5 text-left text-sm hover:bg-brand-subtle">
+              <span>{t.name}</span>
+              <StatusLozenge status={t.to} />
+            </button>
+          ))}
+        </div>
+      )}
+      <div className="mt-2">
+        <ErrorBanner error={error} />
+      </div>
+    </div>
+  );
+}

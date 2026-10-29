@@ -1,26 +1,35 @@
 @import "tailwindcss";
 
+/* Palette modelled on Atlassian's design tokens. */
+@theme {
+  --color-brand: #0c66e4;
+  --color-brand-hover: #0055cc;
+  --color-brand-subtle: #e9f2ff;
+  --color-ink: #172b4d;
+  --color-subtle: #44546f;
+  --color-faint: #626f86;
+  --color-line: #dcdfe4;
+  --color-surface: #f7f8f9;
+  --color-hover: #091e420f;
+  --color-success: #22a06b;
+  --color-warning: #e2b203;
+  --color-danger: #c9372c;
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Ubuntu,
+    sans-serif;
+}
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  color-scheme: light;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: #ffffff;
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+}
+
+input,
+textarea,
+select {
+  color: inherit;
 }

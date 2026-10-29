@@ -1,36 +1,24 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Worklog for Jira
 
-## Getting Started
+A Jira Cloud client focused on time tracking, built on the [Jira REST API v3](https://developer.atlassian.com/cloud/jira/platform/rest/v3/intro/).
 
-First, run the development server:
+## Run
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+pnpm install
+pnpm dev        # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Sign in with your site (`your-company.atlassian.net`), your Atlassian email and an
+[API token](https://id.atlassian.com/manage-profile/security/api-tokens).
+Credentials are kept in an HTTP-only cookie and every Jira call goes through
+`/api/jira/*` on this server (Jira Cloud doesn't allow browser CORS).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Features
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- **Your work** – time logged today / this week / this month against the expected hours, a clickable week strip, and Worked on / Viewed / Assigned lists.
+- **Issues** – JQL search with presets and estimate / logged / remaining columns.
+- **Issue view** – description, comments, status transitions, time-tracking bar, editable estimates, full work log with edit / delete.
+- **Log work** – Jira duration syntax (`2w 4d 6h 45m`), start date/time, description, and remaining-estimate handling (auto / leave / set to / reduce by).
+- **Timesheet** – week or month grid of issues × days for you or a colleague; click an empty cell to log time, a filled cell to edit its worklogs.
+- **Reports** – worklogs for a date range, people and JQL filter, grouped by issue / user / day / project, with CSV export.

@@ -132,6 +132,32 @@ export async function getAllProjects(): Promise<Project[]> {
 
 export const getIssueTypes = () => jira<IssueType[]>("issuetype");
 
+/** Issue types the user may create in a project (createmeta). */
+export async function getCreateIssueTypes(projectKey: string): Promise<IssueType[]> {
+  const res = await jira<{ issueTypes?: IssueType[]; values?: IssueType[] }>(
+    `issue/createmeta/${encodeURIComponent(projectKey)}/issuetypes`,
+    { query: { maxResults: 200 } },
+  );
+  return res.issueTypes ?? res.values ?? [];
+}
+
+export type CreateField = { fieldId: string; key?: string; name: string; required: boolean; hasDefaultValue?: boolean };
+
+/** Fields on the create screen for a project + issue type. */
+export async function getCreateFields(projectKey: string, issueTypeId: string): Promise<CreateField[]> {
+  const res = await jira<{ fields?: CreateField[]; values?: CreateField[] }>(
+    `issue/createmeta/${encodeURIComponent(projectKey)}/issuetypes/${issueTypeId}`,
+    { query: { maxResults: 200 } },
+  );
+  return res.fields ?? res.values ?? [];
+}
+
+export const createIssue = (fields: Record<string, unknown>) =>
+  jira<{ id: string; key: string }>("issue", { method: "POST", body: { fields } });
+
+export const searchAssignableUsers = (projectKey: string, query: string) =>
+  jira<JiraUser[]>("user/assignable/search", { query: { project: projectKey, query, maxResults: 20 } });
+
 export const searchUsers = (query: string) =>
   jira<JiraUser[]>("user/search", { query: { query, maxResults: 20 } }).then((users) =>
     users.filter((u) => u.accountType !== "app"),

@@ -2,13 +2,15 @@
 
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
 import type { Issue, Worklog } from "@/lib/jira/types";
+import { CreateChildDialog } from "./create-child";
 import { DeleteWorklogDialog, EstimatesDialog, LogWorkDialog } from "./log-work-dialog";
 import { IssueView } from "./issue-view";
 
 type Dialog =
   | { kind: "log"; issueKey?: string; date?: Date; worklog?: Worklog }
   | { kind: "delete"; issueKey: string; worklog: Worklog }
-  | { kind: "estimates"; issue: Issue };
+  | { kind: "estimates"; issue: Issue }
+  | { kind: "create-child"; parent: Issue; summary?: string; typeId?: string };
 
 type WorkspaceValue = {
   /** Bumped after any write so every view can refetch. */
@@ -19,6 +21,7 @@ type WorkspaceValue = {
   editWorklog: (issueKey: string, worklog: Worklog) => void;
   deleteWorklog: (issueKey: string, worklog: Worklog) => void;
   editEstimates: (issue: Issue) => void;
+  createChild: (parent: Issue, opts?: { summary?: string; typeId?: string }) => void;
 };
 
 const WorkspaceContext = createContext<WorkspaceValue | null>(null);
@@ -47,6 +50,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       editWorklog: (key, worklog) => setDialog({ kind: "log", issueKey: key, worklog }),
       deleteWorklog: (key, worklog) => setDialog({ kind: "delete", issueKey: key, worklog }),
       editEstimates: (issue) => setDialog({ kind: "estimates", issue }),
+      createChild: (parent, opts) => setDialog({ kind: "create-child", parent, ...opts }),
     }),
     [version, changed],
   );
@@ -66,6 +70,15 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       )}
       {dialog?.kind === "delete" && (
         <DeleteWorklogDialog issueKey={dialog.issueKey} worklog={dialog.worklog} onClose={closeDialog} onDeleted={changed} />
+      )}
+      {dialog?.kind === "create-child" && (
+        <CreateChildDialog
+          parent={dialog.parent}
+          initialSummary={dialog.summary}
+          initialTypeId={dialog.typeId}
+          onClose={closeDialog}
+          onCreated={changed}
+        />
       )}
       {dialog?.kind === "estimates" && <EstimatesDialog issue={dialog.issue} onClose={closeDialog} onSaved={changed} />}
     </WorkspaceContext.Provider>

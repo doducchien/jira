@@ -120,10 +120,14 @@ export function UserPicker({
   onSelect,
   placeholder = "Search people",
   exclude = [],
+  search = searchUsers,
+  autoFocus,
 }: {
   onSelect: (user: JiraUser) => void;
   placeholder?: string;
   exclude?: string[];
+  search?: (query: string) => Promise<JiraUser[]>;
+  autoFocus?: boolean;
 }) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
@@ -135,12 +139,13 @@ export function UserPicker({
   useEffect(() => {
     if (!open || !debounced) return;
     let cancelled = false;
-    searchUsers(debounced)
+    search(debounced)
       .catch(() => [])
       .then((users) => !cancelled && setResult({ query: debounced, users }));
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debounced, open]);
 
   const visible = debounced ? (result?.users ?? []).filter((u) => !exclude.includes(u.accountId)) : [];
@@ -151,6 +156,7 @@ export function UserPicker({
         className={inputClass}
         placeholder={placeholder}
         value={query}
+        autoFocus={autoFocus}
         onFocus={() => setOpen(true)}
         onChange={(e) => {
           setQuery(e.target.value);

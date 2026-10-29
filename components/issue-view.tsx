@@ -6,6 +6,7 @@ import { ISSUE_LIST_FIELDS, doTransition, getIssue, getTransitions, getWorklogs,
 import type { Issue, Transition } from "@/lib/jira/types";
 import { formatDate, formatDateTime, formatDuration, parseJiraDate } from "@/lib/time";
 import { useAsync } from "@/lib/use-async";
+import { InlineCreateChild, canHaveChildren, isEpic } from "./create-child";
 import { useSession } from "./session";
 import { TimeTrackingBar } from "./time-tracking";
 import { Avatar, Button, ErrorBanner, IssueTypeIcon, JiraIcon, Spinner, StatusLozenge } from "./ui";
@@ -19,7 +20,8 @@ export function IssueView({ issueKey, onClose }: { issueKey: string; onClose: ()
 
   useEffect(() => {
     // Dialogs opened on top of the issue handle their own Escape.
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && !document.querySelector("[data-modal]") && onClose();
+    const onKey = (e: KeyboardEvent) =>
+      e.key === "Escape" && !e.defaultPrevented && !document.querySelector("[data-modal]") && onClose();
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
@@ -50,6 +52,7 @@ function IssueBody({ issue, onClose }: { issue: Issue; onClose: () => void }) {
   const { version, logWork, editEstimates, changed } = useWorkspace();
   const [tab, setTab] = useState<"worklog" | "comments">("worklog");
   const [newestFirst, setNewestFirst] = useState(true);
+  const [creatingChild, setCreatingChild] = useState(false);
   const worklogs = useAsync(() => getWorklogs(issue.key), [issue.key, version]);
   const f = issue.fields;
   const tt = f.timetracking ?? {};
@@ -87,12 +90,15 @@ function IssueBody({ issue, onClose }: { issue: Issue; onClose: () => void }) {
           <div className="mt-3 flex gap-2">
             <Button onClick={() => logWork({ issueKey: issue.key })}>⏱ Log work</Button>
             <Button onClick={() => editEstimates(issue)}>Edit estimates</Button>
+            {canHaveChildren(issue) && (
+              <Button onClick={() => setCreatingChild(true)}>{isEpic(issue) ? "＋ Add child issue" : "＋ Create subtask"}</Button>
+            )}
           </div>
 
           <h3 className="mt-6 mb-2 text-sm font-semibold">Description</h3>
           {f.description ? <AdfView node={f.description} /> : <p className="text-sm text-faint">No description</p>}
 
-          <ChildIssues issueKey={issue.key} />
+          <ChildIssues parent={issue} creating={creatingChild} setCreating={setCreatingChild} />
 
           <h3 className="mt-8 mb-2 text-sm font-semibold">Activity</h3>
           <div className="flex items-center gap-1 border-b border-line">
@@ -208,15 +214,25 @@ function IssueBody({ issue, onClose }: { issue: Issue; onClose: () => void }) {
 }
 
 /** Children of an epic / story / task (Jira's "Child issues" panel), with their combined logged time. */
-function ChildIssues({ issueKey }: { issueKey: string }) {
+function ChildIssues({
+  parent,
+  creating,
+  setCreating,
+}: {
+  parent: Issue;
+  creating: boolean;
+  setCreating: (v: boolean) => void;
+}) {
   const { timeConfig } = useSession();
-  const { version, openIssue, logWork } = useWorkspace();
+  const { version, openIssue, logWork, createChild, changed } = useWorkspace();
+  const issueKey = parent.key;
   const children = useAsync(
     () => searchAllIssues(`parent = "${issueKey}" ORDER BY created ASC`, ISSUE_LIST_FIELDS, 500),
     [issueKey, version],
   );
   const list = children.data ?? [];
-  if (!list.length) return children.error ? <ErrorBanner error={children.error} /> : null;
+  if (!canHaveChildren(parent)) return null;
+  if (!list.length && !creating) return children.error ? <ErrorBanner error={children.error} /> : null;
 
   const done = list.filter((c) => c.fields.status?.statusCategory?.key === "done").length;
   const spent = list.reduce((a, c) => a + (c.fields.timespent ?? 0), 0);
@@ -225,14 +241,26 @@ function ChildIssues({ issueKey }: { issueKey: string }) {
   return (
     <section className="mt-8">
       <div className="mb-2 flex items-baseline gap-3">
-        <h3 className="text-sm font-semibold">Child issues</h3>
-        <span className="text-xs text-subtle">
-          {done} of {list.length} done · {formatDuration(spent, timeConfig)} logged
-        </span>
+        <h3 className="text-sm font-semibold">{isEpic(parent) ? "Child issues" : "Subtasks"}</h3>
+        {list.length > 0 && (
+          <span className="text-xs text-subtle">
+            {done} of {list.length} done · {formatDuration(spent, timeConfig)} logged
+          </span>
+        )}
+        <button
+          type="button"
+          className="ml-auto rounded px-1.5 text-lg leading-6 text-subtle hover:bg-hover"
+          title={isEpic(parent) ? "Add child issue" : "Create subtask"}
+          onClick={() => setCreating(true)}
+        >
+          ＋
+        </button>
       </div>
-      <div className="mb-2 h-1.5 overflow-hidden rounded-full bg-line">
-        <div className="h-full bg-success" style={{ width: `${(done / list.length) * 100}%` }} />
-      </div>
+      {list.length > 0 && (
+        <div className="mb-2 h-1.5 overflow-hidden rounded-full bg-line">
+          <div className="h-full bg-success" style={{ width: `${(done / list.length) * 100}%` }} />
+        </div>
+      )}
       <ul className="divide-y divide-line rounded-[3px] border border-line">
         {list.map((c) => (
           <li key={c.id} className="group flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-surface">
@@ -255,6 +283,19 @@ function ChildIssues({ issueKey }: { issueKey: string }) {
             </span>
           </li>
         ))}
+        {creating && (
+          <li>
+            <InlineCreateChild
+              parent={parent}
+              onCreated={changed}
+              onCancel={() => setCreating(false)}
+              onMoreFields={(summary, typeId) => {
+                setCreating(false);
+                createChild(parent, { summary, typeId });
+              }}
+            />
+          </li>
+        )}
       </ul>
       {remaining > 0 && <p className="mt-1 text-xs text-faint">{formatDuration(remaining, timeConfig)} remaining across children</p>}
     </section>

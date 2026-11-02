@@ -26,7 +26,7 @@ function useClickOutside(onOutside: () => void) {
   return ref;
 }
 
-/** Search-as-you-type over Jira's issue picker (matches keys and summaries; empty query = recent issues). */
+/** Search-as-you-type over every issue the user can browse (empty query = recent issues). */
 export function IssuePicker({
   onSelect,
   placeholder = "Search issues by key or summary",
@@ -38,7 +38,7 @@ export function IssuePicker({
 }) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
-  const [result, setResult] = useState<{ query: string; items: PickerIssue[] } | null>(null);
+  const [result, setResult] = useState<{ query: string; items: PickerIssue[]; failed?: boolean } | null>(null);
   const [active, setActive] = useState(0);
   const debounced = useDebounced(query).trim();
   const ref = useClickOutside(() => setOpen(false));
@@ -48,13 +48,14 @@ export function IssuePicker({
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
-    pickIssues(debounced)
-      .catch(() => [])
-      .then((found) => {
+    pickIssues(debounced).then(
+      (found) => {
         if (cancelled) return;
         setResult({ query: debounced, items: found });
         setActive(0);
-      });
+      },
+      () => !cancelled && setResult({ query: debounced, items: [], failed: true }),
+    );
     return () => {
       cancelled = true;
     };
@@ -95,7 +96,7 @@ export function IssuePicker({
               <Spinner /> Searching…
             </div>
           )}
-          {!loading && !items.length && <div className="px-3 py-2 text-sm text-subtle">No issues found</div>}
+          {!loading && !items.length && <div className="px-3 py-2 text-sm text-subtle">{result?.failed ? "Search failed, try again" : "No issues found"}</div>}
           {items.map((issue, i) => (
             <button
               type="button"

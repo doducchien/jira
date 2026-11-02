@@ -103,13 +103,39 @@ export function getIssue(key: string) {
   });
 }
 
+/**
+ * Search behind every issue picker. Jira's issue/picker endpoint favours recent issues and returns
+ * only a few matches, so it's combined with JQL searches that cover everything the user can browse.
+ */
 export async function pickIssues(query: string): Promise<PickerIssue[]> {
-  const res = await jira<{ sections: { id: string; issues: PickerIssue[] }[] }>("issue/picker", {
+  const fromJql = (jql: string, maxResults = 30) =>
+    searchIssues(jql, ["summary", "issuetype"], undefined, maxResults).then((r) =>
+      r.issues.map((i): PickerIssue => ({ key: i.key, summaryText: i.fields.summary, img: i.fields.issuetype?.iconUrl })),
+    );
+  const fromPicker = jira<{ sections: { issues: PickerIssue[] }[] }>("issue/picker", {
     query: { query, showSubTasks: true, showSubTaskParent: true },
-  });
+  }).then((r) => r.sections.flatMap((s) => s.issues));
+
+  const sources: Promise<PickerIssue[]>[] = [];
+  if (/^[a-z][a-z0-9_]*-\d+$/i.test(query)) {
+    sources.push(fromJql(`issuekey = ${quote(query.toUpperCase())}`, 1));
+  } else if (/^[a-z][a-z0-9_]*$/i.test(query)) {
+    // A bare word may be a space key; the clause fails harmlessly when no such space exists.
+    sources.push(fromJql(`project = ${quote(query.toUpperCase())} ORDER BY updated DESC`));
+  }
+  sources.push(fromPicker);
+  // Lucene operators break `text ~`, so search on plain terms, each matched as a prefix.
+  const terms = query.replace(/[^\p{L}\p{N}\s]/gu, " ").toLowerCase().split(/\s+/).filter(Boolean);
+  if (terms.length) sources.push(fromJql(`text ~ ${quote(terms.map((t) => `${t}*`).join(" "))} ORDER BY updated DESC`));
+
+  // A clause like `issuekey = ABC-999` errors when the issue doesn't exist, so one failure is expected.
+  const settled = await Promise.allSettled(sources);
+  const failure = settled.find((r) => r.status === "rejected");
+  if (failure && settled.every((r) => r.status === "rejected")) throw failure.reason;
+
   const seen = new Set<string>();
-  return res.sections
-    .flatMap((s) => s.issues)
+  return settled
+    .flatMap((r) => (r.status === "fulfilled" ? r.value : []))
     .filter((i) => (seen.has(i.key) ? false : (seen.add(i.key), true)));
 }
 
